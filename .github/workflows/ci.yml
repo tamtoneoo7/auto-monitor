@@ -98,7 +98,7 @@ jobs:
         working-directory: ws-gateway
         run: |
           npm ci
-          npm install --no-save @vitest/coverage-v8
+          npm install --no-save @vitest/coverage-v8@2.1.9
       - name: Run tests
         working-directory: ws-gateway
         run: npx vitest run --reporter=junit --outputFile=junit.xml --coverage --coverage.provider=v8 --coverage.reporter=lcov
