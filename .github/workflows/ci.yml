@@ -127,9 +127,39 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
+  # ---------------------------------------------------------------- Stage 2b: SECURITY SCAN
+  # Report-only for now (exit-code 0): we first read the baseline, then turn it into a gate.
+  security-scan:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # Trivy's own action was compromised in March 2026 (tags were rewritten).
+      # So it is pinned to the full commit of the safe release 0.35.0, and the Trivy binary to v0.69.3.
+      - name: Trivy scan (dependencies, secrets, misconfigurations)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.69.3
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          format: table
+          output: trivy-report.txt
+          exit-code: "0"
+      - name: Show the report in the log
+        if: always()
+        run: cat trivy-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-report-${{ github.sha }}
+          retention-days: 30
+          path: trivy-report.txt
+
   # ---------------------------------------------------------------- Stage 3: BUILD
   build:
-    needs: [test-agent, test-backend, test-ws-gateway, test-frontend]
+    needs: [test-agent, test-backend, test-ws-gateway, test-frontend, security-scan]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
