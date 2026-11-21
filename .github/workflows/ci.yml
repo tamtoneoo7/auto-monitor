@@ -128,7 +128,7 @@ jobs:
         run: npm run typecheck
 
   # ---------------------------------------------------------------- Stage 2b: SECURITY SCAN
-  # Two passes: a full report that never fails, then a gate that fails on CRITICAL,
+  # security-scan: full report, never fails.  security-gate (below): fails on CRITICAL,
   # or on HIGH when a fixed version exists.
   security-scan:
     needs: validate
@@ -157,6 +157,14 @@ jobs:
           name: trivy-report-${{ github.sha }}
           retention-days: 30
           path: trivy-report.txt
+
+  # Separate job = fresh machine, so nothing left over from the report scan can change the result.
+  security-gate:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
       - name: Trivy gate (fails on CRITICAL, or HIGH with an available fix)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
@@ -171,7 +179,7 @@ jobs:
 
   # ---------------------------------------------------------------- Stage 3: BUILD
   build:
-    needs: [test-agent, test-backend, test-ws-gateway, test-frontend, security-scan]
+    needs: [test-agent, test-backend, test-ws-gateway, test-frontend, security-scan, security-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
