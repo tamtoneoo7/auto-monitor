@@ -405,6 +405,7 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           format: table
+          trivyignores: .trivyignore-images
           exit-code: ${{ env.IMG_GATE == 'true' && '1' || '0' }}
       - name: Save the scanned image
         if: env.IMG_GATE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'

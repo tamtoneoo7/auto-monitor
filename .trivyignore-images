@@ -1,0 +1,14 @@
+# Accepted findings in the container images (exception register for the image gate).
+# Each entry has an expiry date: after it, the finding blocks the pipeline again.
+#
+# CVE-2026-47884  spring-webmvc 6.2.19  CRITICAL  remote code execution through XsltView path handling
+# CVE-2026-47890  spring-webmvc 6.2.19  CRITICAL  stream corruption in server-sent events with views
+#
+# Why accepted:
+#  - The fix exists only in Spring Framework 7 (Spring Boot 4). Spring Boot 3.5 is out of free support,
+#    so no fix will come for the 6.2 line.
+#  - The backend source uses no XSLT views and no server-sent events (checked with a source search).
+#  - Compensating control: the backend is not published to the host, only the frontend and ws-gateway are.
+# Plan: migrate to a supported Spring Boot line. Owner: repository owner (tamtoneoo7).
+CVE-2026-47884 exp:2027-02-23
+CVE-2026-47890 exp:2027-02-23
