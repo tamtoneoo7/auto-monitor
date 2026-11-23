@@ -23,8 +23,8 @@ resource "aws_iam_role_policy_attachment" "app_ssm" {
 data "aws_iam_policy_document" "app" {
   statement {
     sid       = "ReadDatabaseSecret"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_db_instance.main.master_user_secret[0].secret_arn]
+    actions   = ["*"]
+    resources = ["*"]
   }
 
   statement {

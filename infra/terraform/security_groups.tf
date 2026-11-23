@@ -101,3 +101,17 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
   to_port                      = 3306
   referenced_security_group_id = aws_security_group.app.id
 }
+
+resource "aws_security_group" "test_open" {
+  name        = "test-open"
+  description = "TEST ONLY: everything open"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "TEST ONLY: all ports from the internet"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
