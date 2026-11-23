@@ -13,7 +13,7 @@ permissions:
 env:
   IAC_DIR: infra/terraform
   # "false" = the infrastructure scans only report. Set to "true" to make them block the pipeline.
-  IAC_GATE: "false"
+  IAC_GATE: "true"
 
 # A new run on the same branch cancels the previous one (no two runs fight each other).
 concurrency:
