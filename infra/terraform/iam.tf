@@ -68,6 +68,8 @@ resource "aws_iam_role" "flow_logs" {
   assume_role_policy = data.aws_iam_policy_document.flow_logs_assume.json
 }
 
+# E-09: the wildcard is the required log stream suffix of the log group ARN.
+#tfsec:ignore:AVD-AWS-0057
 data "aws_iam_policy_document" "flow_logs" {
   statement {
     actions = [

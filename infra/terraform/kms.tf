@@ -1,4 +1,7 @@
 data "aws_iam_policy_document" "kms" {
+  #checkov:skip=CKV_AWS_109:E-07 key policies always use * as resource, it means this key
+  #checkov:skip=CKV_AWS_111:E-07 key policies always use * as resource, it means this key
+  #checkov:skip=CKV_AWS_356:E-07 key policies always use * as resource, it means this key
   statement {
     sid       = "AccountAdministration"
     actions   = ["kms:*"]

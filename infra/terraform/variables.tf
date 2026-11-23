@@ -44,3 +44,9 @@ variable "acm_certificate_arn" {
   description = "ARN of the ACM certificate used by the HTTPS listeners"
   type        = string
 }
+
+variable "availability_zones" {
+  description = "The two availability zones used by the subnets (pinned, so the result never drifts)"
+  type        = list(string)
+  default     = ["eu-west-3a", "eu-west-3b"]
+}

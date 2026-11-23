@@ -66,6 +66,8 @@ resource "aws_vpc_security_group_ingress_rule" "app_from_alb_ws" {
   referenced_security_group_id = aws_security_group.alb.id
 }
 
+# E-03: HTTPS out to registries and APIs whose addresses cannot be listed (see infra/EXCEPTIONS.md).
+#trivy:ignore:AVD-AWS-0104
 resource "aws_vpc_security_group_egress_rule" "app_https_out" {
   security_group_id = aws_security_group.app.id
   description       = "HTTPS out (image registry, LLM providers, AWS APIs)"

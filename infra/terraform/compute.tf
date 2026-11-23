@@ -24,7 +24,10 @@ resource "aws_instance" "app" {
   tags = { Name = "${var.project}-app" }
 }
 
+# E-01: the application must be reachable from the internet (see infra/EXCEPTIONS.md).
+#tfsec:ignore:AVD-AWS-0053
 resource "aws_lb" "main" {
+  #checkov:skip=CKV2_AWS_28:E-02 web application firewall planned for a later iteration
   name                       = "${var.project}-alb"
   load_balancer_type         = "application"
   internal                   = false
@@ -45,6 +48,11 @@ resource "aws_lb_target_group" "frontend" {
   port     = 3000
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+
+  health_check {
+    path    = "/api/_health"
+    matcher = "200"
+  }
 }
 
 resource "aws_lb_target_group" "ws" {
@@ -52,6 +60,11 @@ resource "aws_lb_target_group" "ws" {
   port     = 4000
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+
+  health_check {
+    path    = "/healthz"
+    matcher = "200"
+  }
 }
 
 resource "aws_lb_target_group_attachment" "frontend" {

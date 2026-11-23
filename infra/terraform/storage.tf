@@ -1,5 +1,11 @@
 # --- Log bucket (load balancer access logs, S3 access logs) --------------------------
+# E-08: logging the log bucket adds little value.
+#tfsec:ignore:AVD-AWS-0089
+#trivy:ignore:AVD-AWS-0089
 resource "aws_s3_bucket" "logs" {
+  #checkov:skip=CKV2_AWS_62:E-05 no consumer needs bucket events at this stage
+  #checkov:skip=CKV_AWS_144:E-06 single region by design
+  #checkov:skip=CKV_AWS_145:E-04 load balancer log delivery does not support SSE-KMS
   bucket = "${var.project}-logs-${data.aws_caller_identity.current.account_id}"
 }
 
@@ -11,6 +17,9 @@ resource "aws_s3_bucket_public_access_block" "logs" {
   restrict_public_buckets = true
 }
 
+# E-04: load balancer log delivery supports SSE-S3 only.
+#tfsec:ignore:AVD-AWS-0132
+#trivy:ignore:AVD-AWS-0132
 resource "aws_s3_bucket_server_side_encryption_configuration" "logs" {
   bucket = aws_s3_bucket.logs.id
 
@@ -86,6 +95,8 @@ resource "aws_s3_bucket_policy" "logs" {
 
 # --- Backup bucket (database dumps and application exports) --------------------------
 resource "aws_s3_bucket" "backups" {
+  #checkov:skip=CKV2_AWS_62:E-05 no consumer needs bucket events at this stage
+  #checkov:skip=CKV_AWS_144:E-06 single region by design
   bucket = "${var.project}-backups-${data.aws_caller_identity.current.account_id}"
 }
 
