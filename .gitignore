@@ -1,5 +1,9 @@
 # Secrets
 .env
+.env.*
+!.env.example
+*.pem
+*.key
 
 # Data volumes
 data/
@@ -28,3 +32,11 @@ __pycache__/
 
 # Backups
 backup/
+
+# Terraform (state files can contain secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
