@@ -1,11 +1,12 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/* \
  && useradd -m -u 1000 app
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt \
+ && pip uninstall -y pytest pytest-asyncio ruff
 COPY . .
 USER app
 EXPOSE 8000
