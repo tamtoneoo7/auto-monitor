@@ -16,7 +16,7 @@ env:
   IAC_GATE: "true"
   # "false" = image scans only report, and nothing is published.
   # "true"  = image scans block the pipeline, and images that pass are published to ghcr.io (pushes to main only).
-  IMG_GATE: "false"
+  IMG_GATE: "true"
 
 # A new run on the same branch cancels the previous one (no two runs fight each other).
 concurrency:
