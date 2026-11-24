@@ -1,0 +1,24 @@
+# Pinned digests do not update themselves. Dependabot opens a pull request when a newer base image
+# or a newer action exists, so every update goes through the same pipeline and the same gates.
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /agent
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2
+  - package-ecosystem: docker
+    directory: /backend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2
+  - package-ecosystem: docker
+    directory: /ws-gateway
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 2
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3

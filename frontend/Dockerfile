@@ -1,11 +1,11 @@
-FROM node:22-alpine AS build
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine
+FROM node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
 ENV NODE_ENV=production NITRO_HOST=0.0.0.0 NITRO_PORT=3000
 WORKDIR /app
 COPY --from=build /app/.output ./.output
