@@ -14,11 +14,14 @@ env:
   IAC_DIR: infra/terraform
   # "false" = the infrastructure scans only report. Set to "true" to make them block the pipeline.
   IAC_GATE: "true"
+  # "false" = image scans only report, and nothing is published.
+  # "true"  = image scans block the pipeline, and images that pass are published to ghcr.io (pushes to main only).
+  IMG_GATE: "true"
 
 # A new run on the same branch cancels the previous one (no two runs fight each other).
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # ---------------------------------------------------------------- Stage 1: VALIDATE
@@ -356,16 +359,106 @@ jobs:
             backend/target/*.jar
             ws-gateway/dist
 
-  # ---------------------------------------------------------------- Stage 4: PACKAGE
+  # ---------------------------------------------------------------- Stage 4: PACKAGE (build and scan the images)
   package:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         service: [agent, backend, frontend, ws-gateway]
     steps:
       - uses: actions/checkout@v4
-      - name: Build image monitor-${{ matrix.service }} (local only, not pushed)
-        run: docker build -t "monitor-${{ matrix.service }}:${{ github.sha }}" "${{ matrix.service }}"
+      - name: Build image monitor-${{ matrix.service }} (local only)
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${{ github.sha }}" \
+            -t "monitor-${{ matrix.service }}:${{ github.sha }}" "${{ matrix.service }}"
+      - name: Trivy image report (all severities, never fails)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.69.3
+          scan-type: image
+          image-ref: monitor-${{ matrix.service }}:${{ github.sha }}
+          scanners: vuln,secret
+          format: table
+          output: trivy-image-${{ matrix.service }}.txt
+          exit-code: "0"
+      - name: Start of the report
+        if: always()
+        run: head -n 40 trivy-image-${{ matrix.service }}.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: trivy-image-report-${{ matrix.service }}-${{ github.sha }}
+          retention-days: 30
+          path: trivy-image-${{ matrix.service }}.txt
+      - name: Trivy image gate (CRITICAL, or HIGH with an available fix)
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.69.3
+          scan-type: image
+          image-ref: monitor-${{ matrix.service }}:${{ github.sha }}
+          scanners: vuln,secret
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          format: table
+          trivyignores: .trivyignore-images
+          exit-code: ${{ env.IMG_GATE == 'true' && '1' || '0' }}
+      - name: Save the scanned image
+        if: env.IMG_GATE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker save "monitor-${{ matrix.service }}:${{ github.sha }}" -o "image-${{ matrix.service }}.tar"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: env.IMG_GATE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: image-${{ matrix.service }}
+          retention-days: 1
+          path: image-${{ matrix.service }}.tar
+
+  # ---------------------------------------------------------------- Stage 5: PUBLISH
+  # Only the image that passed the gate is published (the same file, not a rebuild).
+  # Runs on pushes to main only. This is the only job allowed to write to the registry.
+  publish:
+    needs: package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [agent, backend, frontend, ws-gateway]
+    steps:
+      - name: Publishing is off while IMG_GATE is not true
+        if: env.IMG_GATE != 'true'
+        run: echo "IMG_GATE is not true, nothing is published."
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: env.IMG_GATE == 'true'
+        with:
+          name: image-${{ matrix.service }}
+      - name: Load, push by commit SHA, record the digest
+        if: env.IMG_GATE == 'true'
+        env:
+          SERVICE: ${{ matrix.service }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="ghcr.io/${OWNER}/monitor-${SERVICE}"
+          docker load -i "image-${SERVICE}.tar"
+          echo "${REGISTRY_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker tag "monitor-${SERVICE}:${GITHUB_SHA}" "${IMAGE}:${GITHUB_SHA}"
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}:${GITHUB_SHA}")"
+          echo "${DIGEST}" > "digest-${SERVICE}.txt"
+          echo "- ${SERVICE}: \`${DIGEST}\`" >> "${GITHUB_STEP_SUMMARY}"
+          docker logout ghcr.io
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: env.IMG_GATE == 'true'
+        with:
+          name: digest-${{ matrix.service }}-${{ github.sha }}
+          retention-days: 90
+          path: digest-${{ matrix.service }}.txt
