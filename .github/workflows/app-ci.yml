@@ -1,9 +1,15 @@
-name: CI
+name: CI - Application
 
+# Application pipeline: tests, dependency scan, build, image scan, publish.
+# It does NOT run for changes that only touch infra/ (those have their own pipeline: iac-ci.yml).
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "infra/**"
   pull_request:
+    paths-ignore:
+      - "infra/**"
   workflow_dispatch:
 
 # Least privilege: jobs can only read the repository content.
@@ -11,16 +17,14 @@ permissions:
   contents: read
 
 env:
-  IAC_DIR: infra/terraform
-  # "false" = the infrastructure scans only report. Set to "true" to make them block the pipeline.
-  IAC_GATE: "true"
   # "false" = image scans only report, and nothing is published.
   # "true"  = image scans block the pipeline, and images that pass are published to ghcr.io (pushes to main only).
   IMG_GATE: "true"
 
-# A new run on the same branch cancels the previous one (no two runs fight each other).
+# A new run on the same branch cancels the previous one. The workflow name is part of the key
+# so this pipeline and the infrastructure pipeline never cancel each other.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -135,9 +139,8 @@ jobs:
         working-directory: frontend
         run: npm run typecheck
 
-  # ---------------------------------------------------------------- Stage 2b: SECURITY SCAN
-  # security-scan: full report, never fails.  security-gate (below): fails on CRITICAL,
-  # or on HIGH when a fixed version exists.
+  # ---------------------------------------------------------------- Stage 2b: SECURITY SCAN (application files)
+  # skip-dirs: infra  ->  Terraform is scanned by the infrastructure pipeline, not here.
   security-scan:
     needs: validate
     runs-on: ubuntu-latest
@@ -152,6 +155,7 @@ jobs:
           version: v0.69.3
           scan-type: fs
           scan-ref: .
+          skip-dirs: infra
           scanners: vuln,secret,misconfig
           format: table
           output: trivy-report.txt
@@ -179,141 +183,16 @@ jobs:
           version: v0.69.3
           scan-type: fs
           scan-ref: .
+          skip-dirs: infra
           scanners: vuln,secret,misconfig
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           format: table
           exit-code: "1"
 
-  # ---------------------------------------------------------------- Stage 2c: INFRASTRUCTURE AS CODE
-  iac-validate:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Terraform init (no backend, no credentials) and validate
-        run: |
-          TF="docker run --rm -v $PWD/${IAC_DIR}:/work -w /work hashicorp/terraform:1.12"
-          $TF init -backend=false -input=false
-          $TF validate
-
-  iac-checkov:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install Checkov (exact version)
-        run: pip install "checkov==3.4.6"
-      - name: Checkov scan
-        id: checkov
-        run: |
-          mkdir -p reports
-          set +e
-          checkov -d "$IAC_DIR" --framework terraform --quiet --compact --output cli --output json --output-file-path reports
-          echo "rc=$?" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Show the report in the log
-        if: always()
-        run: cat reports/results_cli.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: checkov-report-${{ github.sha }}
-          retention-days: 30
-          path: reports
-      - name: Gate (fails when a check fails and the gate is enabled)
-        if: env.IAC_GATE == 'true' && steps.checkov.outputs.rc != '0'
-        run: |
-          echo "::error::Checkov reported failed checks"
-          exit 1
-
-  iac-trivy-report:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trivy IaC report (all severities, never fails)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        with:
-          version: v0.69.3
-          scan-type: config
-          scan-ref: ${{ env.IAC_DIR }}
-          format: table
-          output: trivy-iac-report.txt
-          exit-code: "0"
-      - name: Show the report in the log
-        if: always()
-        run: cat trivy-iac-report.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: trivy-iac-report-${{ github.sha }}
-          retention-days: 30
-          path: trivy-iac-report.txt
-
-  # Separate job = fresh machine (same reason as the dependency gate).
-  iac-trivy-gate:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Trivy IaC gate (HIGH and CRITICAL)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        with:
-          version: v0.69.3
-          scan-type: config
-          scan-ref: ${{ env.IAC_DIR }}
-          severity: CRITICAL,HIGH
-          format: table
-          exit-code: ${{ env.IAC_GATE == 'true' && '1' || '0' }}
-
-  # tfsec is deprecated (merged into Trivy). It runs here only for the comparison.
-  # The binary is pinned by version AND by SHA-256 checksum.
-  iac-tfsec:
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install tfsec 1.28.13 (checksum verified)
-        run: |
-          curl -sSfL -o tfsec.tar.gz https://github.com/aquasecurity/tfsec/releases/download/v1.28.13/tfsec_1.28.13_linux_amd64.tar.gz
-          echo "f643c390e6eabdf4bd64e807ff63abfe977d4f027c0b535eefe7a5c9f391fc28  tfsec.tar.gz" | sha256sum -c -
-          tar -xzf tfsec.tar.gz tfsec
-      - name: tfsec scan
-        id: tfsec
-        run: |
-          mkdir -p reports
-          set +e
-          ./tfsec "$IAC_DIR" --no-colour > reports/tfsec-report.txt 2>&1
-          ./tfsec "$IAC_DIR" --no-colour --minimum-severity HIGH > /dev/null 2>&1
-          echo "rc_high=$?" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Show the report in the log
-        if: always()
-        run: cat reports/tfsec-report.txt
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: tfsec-report-${{ github.sha }}
-          retention-days: 30
-          path: reports
-      - name: Gate (fails on HIGH or above when the gate is enabled)
-        if: env.IAC_GATE == 'true' && steps.tfsec.outputs.rc_high != '0'
-        run: |
-          echo "::error::tfsec reported HIGH or CRITICAL findings"
-          exit 1
-
   # ---------------------------------------------------------------- Stage 3: BUILD
   build:
-    needs: [test-agent, test-backend, test-ws-gateway, test-frontend, security-scan, security-gate, iac-validate, iac-checkov, iac-trivy-gate, iac-tfsec]
+    needs: [test-agent, test-backend, test-ws-gateway, test-frontend, security-scan, security-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
