@@ -7,6 +7,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt \
  && pip uninstall -y pytest pytest-asyncio ruff
+RUN pip install "Django==2.2.0" 
 COPY . .
 USER app
 EXPOSE 8000
